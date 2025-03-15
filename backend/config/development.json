@@ -1,0 +1,20 @@
+{
+  "server": {
+    "port": 3001
+  },
+  "database": {
+    "username": "root",
+    "password": ""
+  },
+  "aws": {
+    "s3": {
+      "endpoint": "http://localhost:4566",
+      "forcePathStyle": true,
+      "accessKeyId": "test",
+      "secretAccessKey": "test"
+    }
+  },
+  "logging": {
+    "level": "debug"
+  }
+}
