@@ -1,0 +1,61 @@
+version: "3.8"
+services:
+  db:
+    image: mysql:8.0
+    container_name: vacation_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: vacation_db
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 5
+
+  backend:
+    build: ./Backend
+    container_name: vacation_backend
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: example
+      DB_NAME: vacation_db
+      JWT_SECRET: "supersecretjwt"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./Frontend
+    container_name: vacation_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  localstack:
+    container_name: "${LOCALSTACK_DOCKER_NAME-localstack_main}"
+    image: localstack/localstack
+    ports:
+      - "127.0.0.1:4566:4566"            # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559"  # External services port range
+      - "127.0.0.1:53:53"                # DNS configuration (TCP)
+      - "127.0.0.1:53:53/udp"            # DNS configuration (UDP)
+      - "127.0.0.1:443:443"              # LocalStack HTTPS Gateway
+    environment:
+      - DEBUG=${DEBUG-}
+      - PERSISTENCE=1
+      - LAMBDA_EXECUTOR=${LAMBDA_EXECUTOR-}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+volumes:
+  db_data:
