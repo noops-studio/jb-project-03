@@ -1,3 +1,10 @@
+@import "tailwindcss";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* You can add global styles or overrides below if needed. */
+body {
+  font-family: 'Poppins', sans-serif;
+}
