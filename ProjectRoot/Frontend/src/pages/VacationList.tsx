@@ -163,6 +163,50 @@ const VacationList: React.FC = () => {
 
           return (
             <div key={vac.id} className="border rounded shadow p-4 flex flex-col">
+              {/* Image Container with fixed height */}
+              <div className="h-48 overflow-hidden rounded mb-3 bg-gray-100">
+                {vac.imageFileName ? (
+                  <>
+                    {/* Debug info display */}
+                    {import.meta.env.DEV && (
+                      <div className="absolute top-0 right-0 bg-black bg-opacity-70 text-white text-xs p-1 z-10">
+                        {vac.imageFileName.substring(0, 10)}...
+                      </div>
+                    )}
+                    <img 
+                      src={`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/vacations/images/${vac.imageFileName}`} 
+                      alt={vac.destination} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Display more detailed debugging info in the console
+                        const imageUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/vacations/images/${vac.imageFileName}`;
+                        console.error(`Error loading image for ${vac.destination}:`, {
+                          url: imageUrl,
+                          filename: vac.imageFileName,
+                          vacation: vac
+                        });
+                        
+                        // Use inline SVG as fallback instead of external URL
+                        const target = e.target as HTMLImageElement;
+                        target.onerror = null; // Prevent infinite error loop
+                        target.style.padding = '2rem';
+                        target.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cg%3E%3Crect%20fill%3D%22%23f8f9fa%22%20height%3D%22100%25%22%20width%3D%22100%25%22%2F%3E%3Ctext%20fill%3D%22%23999999%22%20font-family%3D%22Arial%2C%20sans-serif%22%20font-size%3D%2214%22%20font-weight%3D%22bold%22%20text-anchor%3D%22middle%22%20x%3D%22200%22%20y%3D%22150%22%3ENo%20Image%20Available%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E';
+                      }}
+                      loading="lazy" // Add lazy loading for better performance
+                    />
+                  </>
+                ) : (
+                  // Default image when no filename is available
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-500">
+                    <div className="text-center p-4">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mx-auto mb-2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                      <p className="text-sm">No Image</p>
+                    </div>
+                  </div>
+                )}
+              </div>
               <h3 className="text-xl font-semibold mb-2">{vac.destination}</h3>
               <p className="mb-2">{vac.description}</p>
               <p className="mb-1"><strong>Start:</strong> {vac.startDate} &nbsp; <strong>End:</strong> {vac.endDate}</p>

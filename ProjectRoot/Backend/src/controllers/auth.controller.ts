@@ -8,9 +8,7 @@ export const AuthController = {
   register: async (req: Request, res: Response) => {
     try {
       const { firstName, lastName, email, password } = req.body;
-      if (!firstName || !lastName || !email || !password) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
+      // Validation is now handled by Joi middleware
       // Check if email already exists
       const existing = await User.findOne({ where: { email } });
       if (existing) {
@@ -45,9 +43,7 @@ export const AuthController = {
   login: async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password are required" });
-      }
+      // Validation is now handled by Joi middleware
       // Find user by email
       const user = await User.findOne({ where: { email } });
       if (!user) {

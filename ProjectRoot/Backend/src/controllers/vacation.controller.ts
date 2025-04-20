@@ -8,8 +8,54 @@ import fs from "fs";
 import path from "path";
 import { sequelize } from "../config/db";
 import { QueryTypes } from "sequelize";
+import { getPublicUrl, deleteFile } from "../utils/s3";
 
 export const VacationController = {
+  // Get image by filename - this doesn't need auth middleware
+  getVacationImage: async (req: Request, res: Response) => {
+    try {
+      const filename = req.params.filename;
+      if (!filename) {
+        return res.status(400).json({ message: "Image filename is required" });
+      }
+      
+      console.log(`Serving image: ${filename}`);
+      
+      // If we're using local images (S3 failed to connect), serve from local uploads folder
+      if (global.useLocalImages) {
+        // Check if file exists in uploads folder
+        const localPath = path.join(process.cwd(), 'uploads', filename);
+        if (fs.existsSync(localPath)) {
+          console.log(`Serving local file from: ${localPath}`);
+          return res.sendFile(localPath);
+        } else {
+          console.warn(`Local file not found: ${localPath}`);
+          // File doesn't exist locally - send default image or 404
+          return res.status(404).json({ message: "Image not found" });
+        }
+      } else {
+        try {
+          // Try to serve from uploads directory first as a fallback
+          const localPath = path.join(process.cwd(), 'uploads', filename);
+          if (fs.existsSync(localPath)) {
+            console.log(`Serving local file (even though S3 is active): ${localPath}`);
+            return res.sendFile(localPath);
+          }
+        } catch (err) {
+          console.log("Failed to serve from local uploads, trying S3 redirect");
+        }
+        
+        // Use S3 if available
+        const publicUrl = getPublicUrl(filename);
+        console.log(`Redirecting to S3 URL: ${publicUrl}`);
+        return res.redirect(publicUrl);
+      }
+    } catch (err: any) {
+      console.error("Error serving image:", err.message);
+      return res.status(500).json({ message: "Server error" });
+    }
+  },
+  
   // Get all vacations (for logged-in user or admin)
   getAllVacations: async (req: Request, res: Response) => {
     try {
@@ -28,6 +74,11 @@ export const VacationController = {
           const followRecord = await Follower.findOne({ where: { userId: currentUserId, vacationId: plainVac.id } });
           isFollowed = followRecord ? true : false;
         }
+        
+        // Add debug info to help with image troubleshooting
+        console.log(`Vacation image info - ID: ${plainVac.id}, fileName: ${plainVac.imageFileName}`);
+        
+        // Use the imageFileName as is - the frontend will construct the correct URL
         result.push({ ...plainVac, followersCount: count, isFollowed });
       }
       return res.json(result);
@@ -57,27 +108,9 @@ export const VacationController = {
     try {
       // `upload.single('image')` middleware will have processed the file if any
       const { destination, description, startDate, endDate, price } = req.body;
-      // Basic validation
-      if (!destination || !description || !startDate || !endDate || !price) {
-        return res.status(400).json({ message: "All fields are required" });
-      }
+      // Validation is now handled by Joi middleware
       const start = new Date(startDate);
       const end = new Date(endDate);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return res.status(400).json({ message: "Invalid date format" });
-      }
-      if (end < start) {
-        return res.status(400).json({ message: "End date cannot be before start date" });
-      }
-      const now = new Date();
-      // Do not allow creating vacations entirely in the past
-      if (end < now) {
-        return res.status(400).json({ message: "Vacation dates cannot be entirely in the past" });
-      }
-      const priceNum = parseFloat(price);
-      if (priceNum < 0 || priceNum > 10000) {
-        return res.status(400).json({ message: "Price must be between 0 and 10000" });
-      }
       // Handle image file if provided
       let imageFileName = "no-image.jpg";
       if (req.file) {
@@ -105,31 +138,27 @@ export const VacationController = {
         return res.status(404).json({ message: "Vacation not found" });
       }
       const { destination, description, startDate, endDate, price } = req.body;
-      // Validate fields (allow partial updates except we expect all fields in form except image)
-      if (!destination || !description || !startDate || !endDate || !price) {
-        return res.status(400).json({ message: "All fields (except image) are required" });
-      }
+      // Validation is now handled by Joi middleware
       const start = new Date(startDate);
       const end = new Date(endDate);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return res.status(400).json({ message: "Invalid date format" });
-      }
-      if (end < start) {
-        return res.status(400).json({ message: "End date cannot be before start date" });
-      }
       const priceNum = parseFloat(price);
-      if (priceNum < 0 || priceNum > 10000) {
-        return res.status(400).json({ message: "Price must be between 0 and 10000" });
-      }
       // If a new image file is uploaded, handle it
       let imageFileName = vacation.get("imageFileName") as string;
       if (req.file) {
-        // Remove old image file from server if exists
-        const oldFile = imageFileName;
-        if (oldFile && fs.existsSync(path.join("uploads", oldFile))) {
-          fs.unlinkSync(path.join("uploads", oldFile));
+        try {
+          // Try to delete the old file from S3 or local storage
+          if (imageFileName) {
+            await deleteFile(imageFileName);
+            console.log(`Deleted old image: ${imageFileName}`);
+          }
+        } catch (err) {
+          console.warn(`Could not delete old image file: ${imageFileName}`, err);
+          // Continue with the update even if old file deletion fails
         }
+        
+        // Use the new filename provided by multer/S3Storage
         imageFileName = req.file.filename;
+        console.log(`New image filename: ${imageFileName}`);
       }
       // Update fields
       await Vacation.update(
@@ -156,10 +185,16 @@ export const VacationController = {
       await Follower.destroy({ where: { vacationId: vacId } });
       // Remove the vacation
       await Vacation.destroy({ where: { id: vacId } });
-      // Delete the image file from disk, if exists
+      // Delete the image file from S3 or local storage
       const imageFileName = vacation.get("imageFileName") as string;
-      if (imageFileName && fs.existsSync(path.join("uploads", imageFileName))) {
-        fs.unlinkSync(path.join("uploads", imageFileName));
+      try {
+        if (imageFileName) {
+          await deleteFile(imageFileName);
+          console.log(`Deleted vacation image: ${imageFileName}`);
+        }
+      } catch (err) {
+        console.warn(`Failed to delete vacation image: ${imageFileName}`, err);
+        // Continue with the deletion even if image removal fails
       }
       return res.json({ message: "Vacation deleted" });
     } catch (err) {
@@ -173,6 +208,13 @@ export const VacationController = {
     try {
       const vacId = req.params.id;
       const userId = req.user!.id;
+      
+      // Verify the vacation exists
+      const vacation = await Vacation.findByPk(vacId);
+      if (!vacation) {
+        return res.status(404).json({ message: "Vacation not found" });
+      }
+      
       // Check if already followed
       const exists = await Follower.findOne({ where: { userId, vacationId: vacId } });
       if (exists) {
@@ -191,6 +233,13 @@ export const VacationController = {
     try {
       const vacId = req.params.id;
       const userId = req.user!.id;
+      
+      // Verify the vacation exists
+      const vacation = await Vacation.findByPk(vacId);
+      if (!vacation) {
+        return res.status(404).json({ message: "Vacation not found" });
+      }
+      
       const deleted = await Follower.destroy({ where: { userId, vacationId: vacId } });
       if (!deleted) {
         return res.status(400).json({ message: "Not following this vacation" });

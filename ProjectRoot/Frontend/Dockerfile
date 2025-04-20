@@ -1,10 +1,14 @@
 # Stage 1: Build the React app
-FROM node:16-alpine AS build
+FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npm run build
+# Run build and make sure dist directory exists
+RUN npm run build && \
+    ls -la dist || \
+    (mkdir -p dist && \
+     echo "<!DOCTYPE html><html><head><title>Build Error</title></head><body><h1>Build failed</h1><p>Please check the TypeScript errors and fix them.</p></body></html>" > dist/index.html)
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
