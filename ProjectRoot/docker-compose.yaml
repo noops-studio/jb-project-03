@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Enable BuildKit for enhanced caching
 x-build-args: &build-args
   BUILDKIT_INLINE_CACHE: 1

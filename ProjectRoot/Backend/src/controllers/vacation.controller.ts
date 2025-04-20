@@ -111,6 +111,7 @@ export const VacationController = {
       // Validation is now handled by Joi middleware
       const start = new Date(startDate);
       const end = new Date(endDate);
+      const priceNum = parseFloat(price);
       // Handle image file if provided
       let imageFileName = "no-image.jpg";
       if (req.file) {
